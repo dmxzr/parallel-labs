@@ -1,0 +1,25 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "build with OpenMP",
+            "type": "shell",
+            "command": "gcc",
+            "args": [
+                "-fopenmp",
+                "-O2",
+                "-Wall",
+                "-g",
+                "${file}",
+                "-o",
+                "${fileDirname}/${fileBasenameNoExtension}"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"],
+            "detail": "Компиляция C-файла с поддержкой OpenMP"
+        }
+    ]
+}
