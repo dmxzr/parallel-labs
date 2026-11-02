@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import argparse
 import csv
 import math
 import os
@@ -9,9 +10,9 @@ REPEATS = 500
 FIT_MAX_THREADS = 4
 
 
-def read_samples():
+def read_samples(path):
     samples = {}
-    with open(os.path.join(ROOT, "measurements.csv"), newline="", encoding="utf-8") as file:
+    with open(path, newline="", encoding="utf-8") as file:
         for row in csv.DictReader(file):
             threads = int(row["threads"])
             samples.setdefault(threads, []).append(float(row["time_s"]))
@@ -50,7 +51,12 @@ def fit_alpha(mean_times):
 
 
 def main():
-    samples = read_samples()
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input", default=os.path.join(ROOT, "measurements.csv"))
+    parser.add_argument("--output", default=os.path.join(ROOT, "results.csv"))
+    args = parser.parse_args()
+
+    samples = read_samples(args.input)
     expected_threads = set(range(1, 17))
     if set(samples) != expected_threads:
         raise ValueError(
@@ -67,7 +73,6 @@ def main():
     }
     alpha, rmse, experimental_speedups = fit_alpha(mean_times)
 
-    result_path = os.path.join(ROOT, "results.csv")
     fields = [
         "потоки",
         "экспериментальное_время_среднее_с",
@@ -78,7 +83,7 @@ def main():
         "отклонение_ускорения_проц",
         "альфа_подбора",
     ]
-    with open(result_path, "w", newline="", encoding="utf-8") as file:
+    with open(args.output, "w", newline="", encoding="utf-8") as file:
         writer = csv.DictWriter(file, fieldnames=fields)
         writer.writeheader()
         for threads in sorted(samples):
@@ -107,7 +112,7 @@ def main():
         f"Подбор α по средним ускорениям для p=1..{FIT_MAX_THREADS}: "
         f"α={alpha:.2f}, RMSE={rmse:.4f}."
     )
-    print("Сводная таблица записана в results.csv.")
+    print(f"Сводная таблица записана в {args.output}.")
 
 
 if __name__ == "__main__":
