@@ -1,8 +1,10 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cmath>
+#include <algorithm>
 #include <vector>
 #include <chrono>
+#include <omp.h>
 
 void generate_matrix(std::vector<double>& A, int N)
 {
@@ -34,14 +36,16 @@ void generate_rhs(const std::vector<double>& A, std::vector<double>& b, std::vec
     }
 }
 
-void forward_elimination(std::vector<double>& A, std::vector<double>& b, int N)
+constexpr int block_size = 64;
+
+void factorize_panel(std::vector<double>& A, std::vector<double>& b, int N, int first, int end)
 {
-    for (int k = 0; k < N; k++)
+    for (int k = first; k < end; k++)
     {
-        double pivot = A[k * N + k];
-        for (int i = k + 1; i < N; i++)
+        const double pivot = A[k * N + k];
+        for (int i = k + 1; i < end; i++)
         {
-            double factor = A[i * N + k] / pivot;
+            const double factor = A[i * N + k] / pivot;
             for (int j = k; j < N; j++)
             {
                 A[i * N + j] -= factor * A[k * N + j];
@@ -51,9 +55,50 @@ void forward_elimination(std::vector<double>& A, std::vector<double>& b, int N)
     }
 }
 
+void update_row(std::vector<double>& A, std::vector<double>& b, int N, int row, int first, int end)
+{
+    for (int k = first; k < end; k++)
+    {
+        const double factor = A[row * N + k] / A[k * N + k];
+        for (int j = k; j < N; j++)
+        {
+            A[row * N + j] -= factor * A[k * N + j];
+        }
+        b[row] -= factor * b[k];
+    }
+}
+
+void forward_elimination(std::vector<double>& A, std::vector<double>& b, int N)
+{
+    for (int first = 0; first < N; first += block_size)
+    {
+        const int end = std::min(first + block_size, N);
+        factorize_panel(A, b, N, first, end);
+        for (int i = end; i < N; i++)
+        {
+            update_row(A, b, N, i, first, end);
+        }
+    }
+}
+
 void forward_elimination_parallel(std::vector<double>& A, std::vector<double>& b, int N)
 {
-    // TODO: реализовать параллельный прямой ход метода Гаусса.
+#pragma omp parallel
+    {
+        for (int first = 0; first < N; first += block_size)
+        {
+            const int end = std::min(first + block_size, N);
+
+#pragma omp single
+            factorize_panel(A, b, N, first, end);
+
+#pragma omp for schedule(static)
+            for (int i = end; i < N; i++)
+            {
+                update_row(A, b, N, i, first, end);
+            }
+        }
+    }
 }
 
 void back_substitution(const std::vector<double>& A, const std::vector<double>& b, std::vector<double>& x, int N)
@@ -83,61 +128,57 @@ bool check_solution(const std::vector<double>& x, const std::vector<double>& x_r
 void solve_and_time(std::vector<double>& A, std::vector<double>& b, std::vector<double>& x, int N, bool parallel, double& t_forward, double& t_back)
 {
     auto t0 = std::chrono::high_resolution_clock::now();
-    
+
     if (parallel) { forward_elimination_parallel(A, b, N); }
     else          { forward_elimination(A, b, N);          }
 
     auto t1 = std::chrono::high_resolution_clock::now();
 
     back_substitution(A, b, x, N);
-    
+
     auto t2 = std::chrono::high_resolution_clock::now();
 
     t_forward = std::chrono::duration<double>(t1 - t0).count();
     t_back    = std::chrono::duration<double>(t2 - t1).count();
 }
 
-void report_result(const std::vector<double>& x, const std::vector<double>& x_ref, int N, int threads, double t_forward, double t_back)
+bool report_result(const std::vector<double>& x, const std::vector<double>& x_ref, int N, int threads, double t_forward, double t_back)
 {
     double max_err = 0.0;
     bool ok = check_solution(x, x_ref, N, max_err);
 
     printf("  N = %d; threads = %d;\n", N, threads);
-    printf("  forward time = %.4f s;\n", t_forward);
-    printf("  back    time = %.4f s;\n", t_back);
-    printf("  total   time = %.4f s;\n", t_forward + t_back);
+    printf("  forward time = %.9f s;\n", t_forward);
+    printf("  back    time = %.9f s;\n", t_back);
+    printf("  total   time = %.9f s;\n", t_forward + t_back);
     printf("  max error = %e;\n", max_err);
     printf("  result: %s.\n", ok ? "OK" : "FAILED");
+    return ok;
 }
 
-int main(int argc, char** argv)
+#ifndef LAB3_BENCHMARK
+int main()
 {
-    // Включить параллельность
-    bool parallel = false; // true
+    constexpr int N = 3000;
+    const int threads = omp_get_max_threads();
+    omp_set_dynamic(0);
+    omp_set_num_threads(threads);
 
-    // Значения по умолчанию
-    int threads = 1;
-    int N       = 3000;
     const unsigned seed = 920215;
-    
     srand(seed);
 
-    std::vector<double> A(N * N);
+    std::vector<double> A(static_cast<std::size_t>(N) * N);
     std::vector<double> b(N);
     std::vector<double> x(N);
     std::vector<double> x_ref(N);
 
-    // 1. Подготовка данных
     generate_matrix(A, N);
     generate_rhs(A, b, x_ref, N);
 
-    // 2. Решение системы с раздельным замером времени
     double t_forward = 0.0;
-    double t_back    = 0.0;
-    solve_and_time(A, b, x, N, parallel, t_forward, t_back);
+    double t_back = 0.0;
+    solve_and_time(A, b, x, N, true, t_forward, t_back);
 
-    // 3. Проверка и вывод результата
-    report_result(x, x_ref, N, threads, t_forward, t_back);
-
-    return 0;
+    return report_result(x, x_ref, N, threads, t_forward, t_back) ? 0 : 1;
 }
+#endif
