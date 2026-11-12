@@ -1,0 +1,57 @@
+============================================================
+Task 1: OpenMP standard version and adoption date
+_OPENMP macro: 202011
+OpenMP version: OpenMP 5.1 (accepted 2020-11)
+
+Task 2: Number of processors and available threads
+Number of available processors: 10
+Maximum number of threads: 10
+
+Task 3: dynamic option
+omp_get_dynamic(): enabled
+Dynamic adjustment allows the runtime to vary the number of threads.
+
+Task 4: Timer resolution
+omp_get_wtick() = 1e-06 seconds
+
+Task 5: Nested parallel regions and active level configuration
+omp_get_nested() = disabled
+omp_get_max_active_levels() = 1
+
+Task 6: Current schedule settings
+Current schedule kind: static
+Current schedule chunk size: 0
+
+============================================================
+Task 7: Example with explicit locks
+Shared total after lock-protected update: 45004050000
+A lock is required here because several threads modify a shared resource.
+Without a lock, the result is nondeterministic and may be corrupted.
+
+============================================================
+Task 8: Comparison of different OpenMP schedules
+Loop size: 2,000,000 iterations, additional work in each iteration
+
+Schedule     | chunk    | time             | result
+------------------------------------------------------------
+static       | chunk 1   | time = 62.433     ms | sum = 19236637208007997
+static       | chunk 8   | time = 52.816     ms | sum = 19236637208007997
+static       | chunk 64  | time = 51.053     ms | sum = 19236637208007997
+dynamic      | chunk 1   | time = 54.686     ms | sum = 19236637208007997
+dynamic      | chunk 8   | time = 48.306     ms | sum = 19236637208007997
+dynamic      | chunk 64  | time = 47.596     ms | sum = 19236637208007997
+guided       | chunk 1   | time = 46.974     ms | sum = 19236637208007997
+guided       | chunk 8   | time = 46.792     ms | sum = 19236637208007997
+guided       | chunk 64  | time = 47.099     ms | sum = 19236637208007997
+
+Interpretation:
+- static: good for regular, balanced workloads; chunk size controls the block partitioning.
+- dynamic: useful when iterations have different complexity; tasks are assigned on demand.
+- guided: dynamically reduces the chunk size as execution proceeds, which is convenient for
+  irregular workloads, but may add scheduling overhead.
+- In a balanced synthetic example the difference may be small; in uneven workloads it becomes visible.
+
+============================================================
+Conclusion
+OpenMP provides flexible control over thread counts, schedules, timers and synchronization.
+The correct choice of schedule depends on the type of workload and its regularity.
